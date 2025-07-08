@@ -23,9 +23,9 @@
             border: 2px solid #D1D5DB; /* gray-300 */
             user-select: none; /* Prevents text selection during drag */
             touch-action: none; /* Improve touch interactions */
-            /* --- FIX: Added padding and gap for a buffer --- */
-            padding: 0.25rem; /* Adds a small buffer around the entire grid */
-            gap: 1px; /* Adds a tiny space between each cell */
+            /* --- FIX: Increased padding and gap for a larger buffer --- */
+            padding: 0.5rem; /* Increased from 0.25rem for a more visible buffer */
+            gap: 2px; /* Increased from 1px for slightly more space between cells */
         }
         .grid-cell {
             display: flex;
@@ -484,11 +484,3 @@
 
 </body>
 </html>
-```
-
-I've made a couple of small but effective changes to the CSS for the game grid:
-
-1.  **Padding:** I added `padding: 0.25rem;` to the `#game-grid`. This creates a small amount of space between the outer border and the grid cells.
-2.  **Gap:** I also added `gap: 1px;` to the grid. This puts a tiny space between each individual letter cell, which helps with the visual clarity and further prevents any letters from touching the outer edge.
-
-The result is a clean buffer around the entire word search, so the letters on the edges should now be fully visib
