@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>French Wine Word Search</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            touch-action: manipulation; /* Prevents double-tap zoom on mobile */
+        }
+        .lora {
+            font-family: 'Lora', serif;
+        }
+        #game-grid {
+            display: grid;
+            grid-template-columns: repeat(30, 1fr);
+            grid-template-rows: repeat(30, 1fr);
+            border: 2px solid #D1D5DB; /* gray-300 */
+            user-select: none; /* Prevents text selection during drag */
+            touch-action: none; /* Improve touch interactions */
+        }
+        .grid-cell {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            aspect-ratio: 1 / 1;
+            font-size: clamp(8px, 2.5vw, 16px);
+            text-transform: uppercase;
+            font-weight: 600;
+            color: #374151; /* gray-700 */
+            cursor: pointer;
+            transition: background-color 0.1s ease-in-out;
+        }
+        .selecting {
+            background-color: #FBBF24; /* amber-400 */
+            color: #1F2937; /* gray-800 */
+        }
+        .found-perm {
+            background-color: #A7F3D0; /* emerald-200 */
+            color: #064E3B; /* emerald-800 */
+        }
+        .word-list-item.found {
+            text-decoration: line-through;
+            color: #6B7280; /* gray-500 */
+        }
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 antialiased">
+
+    <div class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl sm:text-5xl font-bold lora text-gray-900">Le Mot Caché</h1>
+            <p class="mt-2 text-lg text-gray-600">A French Wine-Themed Word Search</p>
+        </header>
+
+        <main class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            <!-- Game Grid -->
+            <div id="game-container" class="lg:col-span-3 bg-white p-4 rounded-xl shadow-lg border border-gray-200">
+                <div id="game-grid" class="rounded-lg overflow-hidden"></div>
+            </div>
+
+            <!-- Word List & Controls -->
+            <aside class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                <h2 class="text-2xl font-bold lora mb-4">Words to Find</h2>
+                <div id="word-list-container" class="h-96 overflow-y-auto pr-2">
+                   <ul id="word-list" class="space-y-2 text-gray-700">
+                       <!-- Word list will be populated by JS -->
+                   </ul>
+                </div>
+                <div class="mt-6">
+                    <button id="reset-button" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                        New Game
+                    </button>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <!-- Definition Modal -->
+    <div id="definition-modal" class="modal-backdrop hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-11/12 max-w-md m-4 transform transition-all" id="modal-content">
+            <div class="p-8 text-center">
+                <h3 id="modal-word" class="text-3xl font-bold lora text-indigo-600 mb-3"></h3>
+                <p id="modal-definition" class="text-gray-600 text-lg mb-8"></p>
+                <button id="modal-continue-btn" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                    Continue
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Win Modal -->
+    <div id="win-modal" class="modal-backdrop hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-11/12 max-w-md m-4 transform transition-all p-8 text-center">
+             <h3 class="text-4xl font-bold lora text-emerald-600 mb-4">Félicitations!</h3>
+             <p class="text-gray-600 text-lg mb-8">You found all the words!</p>
+             <button id="win-new-game-btn" class="w-full bg-emerald-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-colors">
+                 Play Again
+             </button>
+        </div>
+    </div>
+
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- DOM ELEMENTS ---
+        const gridElement = document.getElementById('game-grid');
+        const wordListElement = document.getElementById('word-list');
+        const resetButton = document.getElementById('reset-button');
+        const definitionModal = document.getElementById('definition-modal');
+        const modalWord = document.getElementById('modal-word');
+        const modalDefinition = document.getElementById('modal-definition');
+        const modalContinueBtn = document.getElementById('modal-continue-btn');
+        const winModal = document.getElementById('win-modal');
+        const winNewGameBtn = document.getElementById('win-new-game-btn');
+
+        // --- GAME DATA ---
+        const wordData = [
+            { term: "Assemblage", definition: "The art of blending different lots of wine to create the final product." },
+            { term: "Bâtonnage", definition: "The practice of stirring the lees (spent yeast) in a barrel to add texture and complexity." },
+            { term: "Bousinage", definition: "The final, crucial step of toasting the inside of a new oak barrel to create flavor compounds." },
+            { term: "Bouillie Bordelaise", definition: "The 'Bordeaux Mixture,' a copper sulfate and lime spray used as a fungicide." },
+            { term: "Chai", definition: "An above-ground cellar or building used for aging wine in barrels." },
+            { term: "Chaptalisation", definition: "The process of adding sugar to must (unfermented grape juice) to increase the final alcohol level." },
+            { term: "Clavelin", definition: "The unique, squat 62 cl bottle used exclusively for Vin Jaune." },
+            { term: "Climat", definition: "A specific, named vineyard plot with its own unique terroir, often a Premier or Grand Cru." },
+            { term: "Clos", definition: "A vineyard plot traditionally enclosed by a stone wall." },
+            { term: "Coulure", definition: "A viticultural hazard where grape flowers fail to fertilize, leading to a poor fruit set." },
+            { term: "Coteau", definition: "The slope or hillside; vineyards on the coteaux are often prized for sun and drainage." },
+            { term: "Cuvée", definition: "A specific blend or batch of wine; can also refer to the best juice from the first pressing." },
+            { term: "Débourbage", definition: "Settling the juice of white wine after pressing to clarify it before fermentation." },
+            { term: "Délestage", definition: "A 'rack and return' technique for aggressively extracting color and tannin during fermentation." },
+            { term: "Élevage", definition: "The 'raising' or maturation of wine during the period between fermentation and bottling." },
+            { term: "Eraflage", definition: "The process of destemming grapes before they are crushed and fermented." },
+            { term: "Galets Roulés", definition: "Large, rounded 'pudding stones' in Châteauneuf-du-Pape that radiate heat to the vines." },
+            { term: "Goût de Terroir", definition: "The 'taste of the place'; the desirable earthy, mineral notes that reflect a wine's origin." },
+            { term: "Grès", definition: "Sandstone-based soils, contributing to fine, aromatic wines." },
+            { term: "Jable", definition: "The groove carved into the end of barrel staves where the barrel head is fitted." },
+            { term: "Lieu-dit", definition: "A named place or vineyard that is not an officially classified cru but is recognized for its quality." },
+            { term: "Madérisé", definition: "A wine fault caused by oxidation from heat, giving it cooked and nutty aromas." },
+            { term: "Marc", definition: "The solid remains (skins, seeds) after pressing; can be distilled into an eau-de-vie." },
+            { term: "Marne", definition: "A calcium-rich clay and limestone soil mixture, prized for water retention and minerality." },
+            { term: "Merrain", definition: "The raw, split oak staves that are seasoned for years before being made into a barrel." },
+            { term: "Millerandage", definition: "A hazard causing grape bunches to have berries of different sizes and maturities." },
+            { term: "Monopole", definition: "A vineyard owned and controlled by a single winery." },
+            { term: "Mutage", definition: "The process of stopping fermentation by adding alcohol, used for fortified sweet wines." },
+            { term: "Nerveux", definition: "A desirable quality of 'nervy' high acidity that makes a wine feel vibrant and energetic." },
+            { term: "Ouillage", definition: "The essential practice of topping up barrels to replace wine lost to evaporation." },
+            { term: "Passerillage", definition: "The process of leaving grapes on the vine to dry and concentrate their sugars." },
+            { term: "Pigeage", definition: "The traditional technique of punching down the cap of grape skins during red wine fermentation." },
+            { term: "Pourriture Noble", definition: "'Noble Rot' (Botrytis cinerea), a fungus that concentrates sugars to create exquisite sweet wines." },
+            { term: "Rancio", definition: "A specific, deliberately oxidized and nutty flavor profile in certain fortified wines." },
+            { term: "Saignée", definition: "The 'bleeding' method of making rosé by drawing off juice from a red wine fermentation." },
+            { term: "Schistes", definition: "Schist; a hard, metamorphic rock soil that retains heat and promotes deep root growth." },
+            { term: "Silex", definition: "A flint-based soil in Sancerre and Pouilly-Fumé that imparts a 'gunflint' aroma." },
+            { term: "Sous Voile", definition: "'Under a veil'; aging wine (Vin Jaune) under a film of yeast, creating unique nutty flavors." },
+            { term: "Taille", definition: "The critical winter pruning of grapevines that determines the next season's crop." },
+            { term: "Tuffeau", definition: "The porous, chalky limestone soil of Vouvray and Saumur, excellent for drainage." }
+        ];
+        
+        // --- GAME STATE ---
+        const GRID_SIZE = 30;
+        let grid = [];
+        let words = [];
+        let isSelecting = false;
+        let selectionStart = null;
+        let selectionEnd = null;
+        let foundWords = new Set();
+
+        // --- GAME LOGIC ---
+
+        function sanitizeWord(word) {
+            // Normalizes string for grid placement: uppercase, remove accents and non-alpha characters
+            const normalized = word.term.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            return normalized.toUpperCase().replace(/[^A-Z]/g, '');
+        }
+
+        function initializeGame() {
+            // Reset state
+            foundWords.clear();
+            words = JSON.parse(JSON.stringify(wordData)); // Deep copy
+            words.forEach(w => w.sanitized = sanitizeWord(w));
+
+            // Generate grid and place words
+            grid = createEmptyGrid();
+            placeWordsInGrid();
+            fillEmptyCells();
+            
+            // Render UI
+            renderGrid();
+            renderWordList();
+            
+            // Hide modals
+            definitionModal.classList.add('hidden');
+            winModal.classList.add('hidden');
+        }
+
+        function createEmptyGrid() {
+            return Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(null));
+        }
+
+        function placeWordsInGrid() {
+            const directions = [
+                { x: 1, y: 0 }, { x: -1, y: 0 }, // Horizontal
+                { x: 0, y: 1 }, { x: 0, y: -1 }, // Vertical
+                { x: 1, y: 1 }, { x: -1, y: -1 }, // Diagonal down-right
+                { x: 1, y: -1 }, { x: -1, y: 1 }  // Diagonal down-left
+            ];
+
+            // Sort words by length, longest first, to increase placement success
+            const sortedWords = [...words].sort((a, b) => b.sanitized.length - a.sanitized.length);
+
+            for (const wordObj of sortedWords) {
+                const word = wordObj.sanitized;
+                let placed = false;
+                let attempts = 0;
+
+                while (!placed && attempts < 150) { // Increased attempts for denser grid
+                    const dir = directions[Math.floor(Math.random() * directions.length)];
+                    const startRow = Math.floor(Math.random() * GRID_SIZE);
+                    const startCol = Math.floor(Math.random() * GRID_SIZE);
+
+                    if (canPlaceWord(word, startRow, startCol, dir)) {
+                        for (let i = 0; i < word.length; i++) {
+                            const row = startRow + i * dir.y;
+                            const col = startCol + i * dir.x;
+                            grid[row][col] = word[i];
+                        }
+                        wordObj.placed = true;
+                        placed = true;
+                    }
+                    attempts++;
+                }
+                 if (!wordObj.placed) {
+                    console.warn(`Could not place word: ${wordObj.term}`);
+                }
+            }
+        }
+
+        function canPlaceWord(word, startRow, startCol, dir) {
+            for (let i = 0; i < word.length; i++) {
+                const row = startRow + i * dir.y;
+                const col = startCol + i * dir.x;
+
+                if (row < 0 || row >= GRID_SIZE || col < 0 || col >= GRID_SIZE) {
+                    return false; // Out of bounds
+                }
+                const cell = grid[row][col];
+                if (cell !== null && cell !== word[i]) {
+                    return false; // Overlaps with a different letter
+                }
+            }
+            return true;
+        }
+
+        function fillEmptyCells() {
+            const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    if (grid[r][c] === null) {
+                        grid[r][c] = alphabet[Math.floor(Math.random() * alphabet.length)];
+                    }
+                }
+            }
+        }
+
+        // --- RENDERING ---
+
+        function renderGrid() {
+            gridElement.innerHTML = '';
+            gridElement.style.gridTemplateColumns = `repeat(${GRID_SIZE}, 1fr)`;
+            gridElement.style.gridTemplateRows = `repeat(${GRID_SIZE}, 1fr)`;
+
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('grid-cell');
+                    cell.dataset.row = r;
+                    cell.dataset.col = c;
+                    cell.textContent = grid[r][c];
+                    gridElement.appendChild(cell);
+                }
+            }
+        }
+
+        function renderWordList() {
+            wordListElement.innerHTML = '';
+            words.sort((a,b) => a.term.localeCompare(b.term)).forEach(word => {
+                const li = document.createElement('li');
+                li.textContent = word.term;
+                li.classList.add('word-list-item', 'transition-colors', 'duration-300');
+                if (foundWords.has(word.sanitized)) {
+                    li.classList.add('found');
+                }
+                wordListElement.appendChild(li);
+            });
+        }
+        
+        // --- EVENT HANDLING ---
+        function getCellFromEvent(e) {
+            // For touch events, get the target from the touch coordinates
+            let target;
+            if (e.touches && e.touches.length > 0) {
+                target = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY);
+            } else {
+                target = e.target;
+            }
+
+            const cellElement = target.closest('.grid-cell');
+            if (!cellElement) return null;
+            return {
+                row: parseInt(cellElement.dataset.row),
+                col: parseInt(cellElement.dataset.col),
+                element: cellElement
+            };
+        }
+
+        function handleInteractionStart(e) {
+            e.preventDefault();
+            const cell = getCellFromEvent(e);
+            if (cell) {
+                isSelecting = true;
+                selectionStart = cell;
+                selectionEnd = cell;
+                highlightSelection();
+            }
+        }
+
+        function handleInteractionMove(e) {
+            if (!isSelecting) return;
+            e.preventDefault();
+            const cell = getCellFromEvent(e);
+            if (cell && (cell.row !== selectionEnd.row || cell.col !== selectionEnd.col)) {
+                selectionEnd = cell;
+                highlightSelection();
+            }
+        }
+
+        function handleInteractionEnd(e) {
+            if (!isSelecting) return;
+            e.preventDefault();
+            isSelecting = false;
+            checkSelection();
+            clearSelectionHighlights();
+        }
+
+        // --- SELECTION & HIGHLIGHTING ---
+
+        function highlightSelection() {
+            clearSelectionHighlights();
+            const cellsToHighlight = getCellsBetween(selectionStart, selectionEnd);
+            cellsToHighlight.forEach(({ row, col }) => {
+                const cellEl = gridElement.querySelector(`[data-row='${row}'][data-col='${col}']`);
+                if (cellEl) {
+                    cellEl.classList.add('selecting');
+                }
+            });
+        }
+        
+        function clearSelectionHighlights() {
+            document.querySelectorAll('.grid-cell.selecting').forEach(el => {
+                el.classList.remove('selecting');
+            });
+        }
+
+        function getCellsBetween(start, end) {
+            const cells = [];
+            let { row: r1, col: c1 } = start;
+            let { row: r2, col: c2 } = end;
+            
+            const dx = Math.abs(c2 - c1);
+            const dy = Math.abs(r2 - r1);
+            
+            // Check for straight or 45-degree diagonal lines
+            if (r1 === r2 || c1 === c2 || dx === dy) {
+                const sx = Math.sign(c2 - c1);
+                const sy = Math.sign(r2 - r1);
+                const steps = Math.max(dx, dy);
+                
+                for (let i = 0; i <= steps; i++) {
+                    cells.push({ row: r1 + i * sy, col: c1 + i * sx });
+                }
+            } else {
+                // Not a valid line, just return start cell for single-cell feedback
+                cells.push({ row: r1, col: c1 });
+            }
+            
+            return cells;
+        }
+
+        function checkSelection() {
+            const selectedCells = getCellsBetween(selectionStart, selectionEnd);
+            if (selectedCells.length < 2) return;
+
+            let forwardStr = '';
+            selectedCells.forEach(({ row, col }) => {
+                forwardStr += grid[row][col];
+            });
+            const backwardStr = forwardStr.split('').reverse().join('');
+
+            const wordFound = words.find(w => !foundWords.has(w.sanitized) && (w.sanitized === forwardStr || w.sanitized === backwardStr));
+            
+            if (wordFound) {
+                foundWords.add(wordFound.sanitized);
+                markWordAsFound(selectedCells, wordFound);
+            }
+        }
+
+        function markWordAsFound(cells, word) {
+            cells.forEach(({ row, col }) => {
+                const cellEl = gridElement.querySelector(`[data-row='${row}'][data-col='${col}']`);
+                if (cellEl) {
+                    cellEl.classList.add('found-perm');
+                }
+            });
+            
+            renderWordList();
+            showDefinitionModal(word);
+
+            // Check for win condition
+            if (foundWords.size === words.filter(w => w.placed).length) {
+                setTimeout(() => winModal.classList.remove('hidden'), 500);
+            }
+        }
+
+        // --- MODAL CONTROLS ---
+
+        function showDefinitionModal(word) {
+            modalWord.textContent = word.term;
+            modalDefinition.textContent = word.definition;
+            definitionModal.classList.remove('hidden');
+        }
+
+        function hideDefinitionModal() {
+            definitionModal.classList.add('hidden');
+        }
+        
+        function resetAndStartNewGame() {
+            winModal.classList.add('hidden');
+            initializeGame();
+        }
+
+        // --- EVENT LISTENERS ---
+        resetButton.addEventListener('click', initializeGame);
+        modalContinueBtn.addEventListener('click', hideDefinitionModal);
+        winNewGameBtn.addEventListener('click', resetAndStartNewGame);
+        
+        // Add listeners for both mouse and touch
+        gridElement.addEventListener('mousedown', handleInteractionStart);
+        gridElement.addEventListener('mousemove', handleInteractionMove);
+        document.addEventListener('mouseup', handleInteractionEnd); // Listen on document to catch mouseup outside grid
+        
+        gridElement.addEventListener('touchstart', handleInteractionStart, { passive: false });
+        gridElement.addEventListener('touchmove', handleInteractionMove, { passive: false });
+        gridElement.addEventListener('touchend', handleInteractionEnd);
+        gridElement.addEventListener('touchcancel', handleInteractionEnd);
+
+
+        // --- INITIALIZE ---
+        initializeGame();
+    });
+    </script>
+
+</body>
+</html>
